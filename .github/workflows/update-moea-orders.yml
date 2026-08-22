@@ -1,0 +1,32 @@
+name: Update MOEA export orders
+
+on:
+  schedule:
+    - cron: "20 2 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download official MOEA data
+        run: |
+          mkdir -p data
+          curl --fail --location --retry 3 \
+            https://service.moea.gov.tw/EE520/opendata/b.csv \
+            --output data/moea-orders.csv
+      - name: Commit only when data changed
+        run: |
+          if git diff --quiet -- data/moea-orders.csv; then
+            echo "No update"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/moea-orders.csv
+          git commit -m "Update MOEA export orders"
+          git push
