@@ -1,0 +1,11 @@
+{
+  "name": "美債利率期間結構",
+  "short_name": "美債曲線",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#f3f0e6",
+  "theme_color": "#f3f0e6",
+  "icons": [
+    {"src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable"}
+  ]
+}

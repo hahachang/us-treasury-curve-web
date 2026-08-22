@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="112" fill="#f3f0e6"/>
+  <path d="M72 390H440" stroke="#211f1b" stroke-width="18" stroke-linecap="round"/>
+  <path d="M82 326L132 335L182 326L232 300L282 275L332 236L382 147L432 140" fill="none" stroke="#668f2d" stroke-width="27" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M82 226L132 238L182 249L232 270L282 315L332 327L382 272L432 211" fill="none" stroke="#494842" stroke-width="22" stroke-linecap="round" stroke-linejoin="round"/>
+  <g fill="#668f2d"><circle cx="82" cy="326" r="15"/><circle cx="232" cy="300" r="15"/><circle cx="382" cy="147" r="15"/><circle cx="432" cy="140" r="15"/></g>
+  <text x="76" y="105" fill="#211f1b" font-family="sans-serif" font-size="60" font-weight="800">UST</text>
+</svg>
