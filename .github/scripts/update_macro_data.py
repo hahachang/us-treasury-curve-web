@@ -18,6 +18,8 @@ from playwright.sync_api import sync_playwright
 ROOT = Path(__file__).resolve().parents[2]
 DATA_DIR = ROOT / "data"
 MOF_URL = "https://web02.mof.gov.tw/njswww/webMain.aspx"
+FRED_SERIES = ("PAYEMS", "UNRATE", "CPIAUCSL", "PPIFIS")
+FRED_URL = "https://fred.stlouisfed.org/graph/fredgraph.csv?id=" + ",".join(FRED_SERIES)
 
 
 def roc_ym(day: date) -> str:
@@ -124,9 +126,31 @@ def update_ndc() -> None:
     path.write_text(json.dumps(payload, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
 
 
+def update_us_macro() -> None:
+    """更新 BLS 美國就業與物價月頻資料（由 FRED 提供 CSV）。"""
+    response = requests.get(FRED_URL, timeout=60, headers={"User-Agent": "macro-card-app/1.0"})
+    response.raise_for_status()
+    frame = pd.read_csv(io.StringIO(response.text))
+    series: dict[str, list[list[object]]] = {}
+    for name in FRED_SERIES:
+        clean = frame[["observation_date", name]].dropna()
+        series[name] = [[str(day), float(value)] for day, value in clean.itertuples(index=False, name=None)]
+        if not series[name]:
+            raise RuntimeError(f"FRED series is empty: {name}")
+    payload = {
+        "series": series,
+        "latestDate": max(rows[-1][0] for rows in series.values()),
+        "source": "U.S. Bureau of Labor Statistics via FRED",
+    }
+    (DATA_DIR / "us-macro.json").write_text(
+        json.dumps(payload, ensure_ascii=False, separators=(",", ":")), encoding="utf-8"
+    )
+
+
 if __name__ == "__main__":
     DATA_DIR.mkdir(exist_ok=True)
     update_trade()
+    update_us_macro()
     try:
         update_ndc()
     except Exception as error:
