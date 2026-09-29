@@ -8,7 +8,7 @@ hdr()  { printf "\n\033[1m== %s ==\033[0m\n" "$*"; }
 FAIL=0
 
 hdr "步驟 1：clone"
-[ -d py ] || git clone https://github.com/hahachang/py.git || bad "git clone 失敗（私有 repo 需先 gh auth login 或設定 SSH key）"
+[ -d py ] || git clone https://github.com/haha/py.git || bad "git clone 失敗（私有 repo 需先 gh auth login 或設定 SSH key）"
 for f in py/CLAUDE.md py/handoffs/handoff-youtube-material-pipeline.md \
          py/skills/youtube-material-pipeline/SKILL.md \
          py/skills/whisper-transcription-reliability/SKILL.md \
