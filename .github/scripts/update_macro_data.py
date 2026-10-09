@@ -12,7 +12,6 @@ from urllib.parse import urlencode
 
 import pandas as pd
 import requests
-from playwright.sync_api import sync_playwright
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -105,6 +104,9 @@ def update_ndc() -> None:
     start = today - timedelta(days=500)
     query = f"sy={start.year}&sm={start.month}&ey={today.year}&em={today.month}&id=2%2C12&sq=0,0,0&file_type=xls"
     download_path = DATA_DIR / "ndc-latest.xls"
+    # 只有國發會需要瀏覽器；延後載入，GitHub runner 不必安裝 Playwright
+    from playwright.sync_api import sync_playwright
+
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=True)
         page = browser.new_page()
