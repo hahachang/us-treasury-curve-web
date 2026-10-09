@@ -1,4 +1,4 @@
-name: Update trade, treasury curve, leading and US macro indicators
+name: Update trade and treasury curve
 
 on:
   schedule:
@@ -16,9 +16,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install pandas requests lxml playwright python-calamine
-      - run: playwright install --with-deps chromium
-      - run: python .github/scripts/update_macro_data.py
+      - run: pip install pandas requests lxml
+      # 國發會擋雲端 IP、FRED 限流：這兩項改由家裡的 Mac mini 執行（--only ndc,us_macro）
+      - run: python .github/scripts/update_macro_data.py --only trade,bond_curve
       - name: Commit only when data changed
         run: |
           if git diff --quiet -- data/trade.json data/ndc.json data/us-macro.json index.html; then
@@ -29,4 +29,5 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add data/trade.json data/ndc.json data/us-macro.json index.html
           git commit -m "Update macro indicators"
+          git pull --rebase --autostash
           git push

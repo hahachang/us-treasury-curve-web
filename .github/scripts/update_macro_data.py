@@ -126,6 +126,47 @@ def update_ndc() -> None:
     path.write_text(json.dumps(payload, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
 
 
+# FRED 的 4 個序列都是轉載 BLS；FRED 對程式下載限流（2026-08-22 起逾時），改向 BLS 官方 API 取得。
+BLS_URL = "https://api.bls.gov/publicAPI/v2/timeseries/data/"
+BLS_SERIES = {
+    "PAYEMS": "CES0000000001",    # 非農就業人數（季調，千人）
+    "UNRATE": "LNS14000000",      # 失業率（季調，%）
+    "CPIAUCSL": "CUSR0000SA0",    # CPI-U 全項目（季調）
+    "PPIFIS": "WPSFD4",           # PPI 最終需求（季調）
+}
+
+
+def update_us_macro_bls() -> None:
+    """以 BLS 近兩年數據更新 us-macro.json；長歷史沿用既有檔案（無金鑰 API 每次最多 10 年、每日 25 次）。"""
+    path = DATA_DIR / "us-macro.json"
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    year = date.today().year
+    response = requests.post(
+        BLS_URL, timeout=60,
+        json={"seriesid": list(BLS_SERIES.values()), "startyear": str(year - 1), "endyear": str(year)},
+        headers={"User-Agent": "macro-card-app/1.0"},
+    )
+    response.raise_for_status()
+    body = response.json()
+    if body.get("status") != "REQUEST_SUCCEEDED":
+        raise RuntimeError(f"BLS API：{body.get('status')} {body.get('message')}")
+    by_id = {item["seriesID"]: item["data"] for item in body["Results"]["series"]}
+    for name, series_id in BLS_SERIES.items():
+        updates = {}
+        for point in by_id.get(series_id, []):
+            if not point["period"].startswith("M") or point["period"] == "M13" or point["value"] in ("-", ""):
+                continue
+            updates[f"{point['year']}-{point['period'][1:]}-01"] = float(point["value"])
+        if not updates:
+            raise RuntimeError(f"BLS 序列沒有資料：{series_id}")
+        merged = {day: value for day, value in payload["series"][name]}
+        merged.update(updates)
+        payload["series"][name] = [[day, merged[day]] for day in sorted(merged)]
+    payload["latestDate"] = max(rows[-1][0] for rows in payload["series"].values())
+    payload["source"] = "U.S. Bureau of Labor Statistics"
+    path.write_text(json.dumps(payload, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+
+
 def update_us_macro() -> None:
     """更新 BLS 美國就業與物價月頻資料（由 FRED 提供 CSV）。"""
     response = requests.get(FRED_URL, timeout=60, headers={"User-Agent": "macro-card-app/1.0"})
@@ -190,15 +231,22 @@ def update_bond_curve() -> None:
 
 
 if __name__ == "__main__":
+    import argparse
     import sys
+
+    JOBS = {"trade": update_trade, "bond_curve": update_bond_curve, "us_macro": update_us_macro_bls, "ndc": update_ndc}
+    parser = argparse.ArgumentParser()
+    # GitHub runner 只跑連得到的來源；國發會擋雲端 IP，改由家裡的 mini 執行 --only ndc,us_macro
+    parser.add_argument("--only", default=",".join(JOBS), help="逗號分隔：" + ",".join(JOBS))
+    selected = [name.strip() for name in parser.parse_args().only.split(",") if name.strip()]
 
     DATA_DIR.mkdir(exist_ok=True)
     # 各資料源獨立：任一個失敗只保留舊檔，不能拖累其他卡片。
     # 2026-08-22 起 FRED 從 GitHub runner 連線逾時，舊寫法讓整個 job 失敗、貿易與景氣資料也沒有提交。
     results = {}
-    for name, job in (("trade", update_trade), ("bond_curve", update_bond_curve), ("us_macro", update_us_macro), ("ndc", update_ndc)):
+    for name in selected:
         try:
-            job()
+            JOBS[name]()
             results[name] = "ok"
         except Exception as error:  # noqa: BLE001
             results[name] = f"skipped: {type(error).__name__}: {error}"[:300]
