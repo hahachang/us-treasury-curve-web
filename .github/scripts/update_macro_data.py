@@ -1,4 +1,4 @@
-"""Refresh the static app's MOF trade and NDC indicator JSON files."""
+"""每日更新靜態總經 app 的資料：財政部貿易、美債殖利率、FRED 美國總經、國發會景氣指標。"""
 
 from __future__ import annotations
 
@@ -147,11 +147,63 @@ def update_us_macro() -> None:
     )
 
 
+TREASURY_URL = (
+    "https://home.treasury.gov/resource-center/data-chart-center/interest-rates/"
+    "daily-treasury-rates.csv/{year}/all?type=daily_treasury_yield_curve&field_tdr_date_value={year}&page&_format=csv"
+)
+DATA_PREFIX = "const DATA="
+
+
+def treasury_tenor(header: str) -> str:
+    """財政部欄名轉成頁面的期限代號：'1 Mo'→'1M'、'1.5 Month'→'1.5M'、'10 Yr'→'10Y'。"""
+    number, unit = header.strip().split(" ", 1)
+    return number + ("M" if unit.lower().startswith("mo") else "Y")
+
+
+def update_bond_curve() -> None:
+    """美債殖利率直接嵌在 index.html 的 `const DATA=` 那一行；只更新 rows，頁面程式不動。"""
+    page = ROOT / "index.html"
+    lines = page.read_text(encoding="utf-8").split("\n")
+    index = next(i for i, line in enumerate(lines) if line.startswith(DATA_PREFIX))
+    payload = json.loads(lines[index][len(DATA_PREFIX):].rstrip().rstrip(";"))
+    tenors = payload["tenors"]
+
+    today = date.today()
+    years = [today.year - 1, today.year] if today.month == 1 and today.day <= 15 else [today.year]
+    merged = {row[0]: row for row in payload["rows"]}
+    for year in years:
+        response = requests.get(TREASURY_URL.format(year=year), timeout=60, headers={"User-Agent": "Mozilla/5.0"})
+        response.raise_for_status()
+        frame = pd.read_csv(io.StringIO(response.text))
+        column_of = {treasury_tenor(c): c for c in frame.columns if c != "Date"}
+        missing = [t for t in tenors if t not in column_of]
+        if missing:
+            raise RuntimeError(f"Treasury CSV 缺少期限欄位：{missing}")
+        for _, row in frame.iterrows():
+            month, day, yr = map(int, str(row["Date"]).split("/"))
+            values = [None if pd.isna(row[column_of[t]]) else float(row[column_of[t]]) for t in tenors]
+            merged[f"{yr:04d}-{month:02d}-{day:02d}"] = [f"{yr:04d}-{month:02d}-{day:02d}", *values]
+
+    payload["rows"] = [merged[key] for key in sorted(merged)]
+    lines[index] = DATA_PREFIX + json.dumps(payload, ensure_ascii=False, separators=(",", ":")) + ";"
+    page.write_text("\n".join(lines), encoding="utf-8")
+
+
 if __name__ == "__main__":
+    import sys
+
     DATA_DIR.mkdir(exist_ok=True)
-    update_trade()
-    update_us_macro()
-    try:
-        update_ndc()
-    except Exception as error:
-        print(f"NDC update skipped; keeping previous official data: {error}")
+    # 各資料源獨立：任一個失敗只保留舊檔，不能拖累其他卡片。
+    # 2026-08-22 起 FRED 從 GitHub runner 連線逾時，舊寫法讓整個 job 失敗、貿易與景氣資料也沒有提交。
+    results = {}
+    for name, job in (("trade", update_trade), ("bond_curve", update_bond_curve), ("us_macro", update_us_macro), ("ndc", update_ndc)):
+        try:
+            job()
+            results[name] = "ok"
+        except Exception as error:  # noqa: BLE001
+            results[name] = f"skipped: {type(error).__name__}: {error}"[:300]
+            print(f"::warning title={name} update skipped::{results[name]}")
+    for name, result in results.items():
+        print(f"{name}: {result}")
+    # 全部失敗代表環境或網路本身壞了，讓 workflow 標紅；部分成功照常提交。
+    sys.exit(1 if all(r != "ok" for r in results.values()) else 0)
